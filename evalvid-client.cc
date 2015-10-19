@@ -68,6 +68,9 @@ EvalvidClient::EvalvidClient ()
 {
   NS_LOG_FUNCTION_NOARGS ();
   m_sendEvent = EventId ();
+  m_time = -1;
+  m_sumThoughout = 0;
+  m_count = 0;
 }
 
 EvalvidClient::~EvalvidClient ()
@@ -167,6 +170,20 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                                << std::setfill(' ') << std::setw(16) <<  "id " << packetId
                                << std::setfill(' ') <<  std::setw(16) <<  "udp " << packet->GetSize()
                                << std::endl;
+              double time = Simulator::Now().ToDouble(ns3::Time::S);
+              m_data += packet->GetSize();
+              if(m_time < 0) {
+                  m_time = time;
+              }
+              if(time - m_time >= 0.01){
+                  double thoughout = 8*m_data/(1000*(time-m_time));
+                  m_time = time;
+                  m_data = 0;
+                  NS_LOG_DEBUG(">> thoughout = " <<thoughout);
+                  m_sumThoughout += thoughout;
+                  m_count++;
+              }
+              NS_LOG_DEBUG(">> average thoughout = " <<m_sumThoughout/m_count);
            }
         }
     }
