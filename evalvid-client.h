@@ -97,11 +97,6 @@ private:
   Ipv4Address m_peerAddress;
   uint16_t    m_peerPort;
   EventId     m_sendEvent;
-  std::vector < double > m_thoughout; 
-  double m_time;
-  double m_data;
-  double m_sumThoughout;
-  uint16_t m_count;
 };
 
 } // namespace ns3
