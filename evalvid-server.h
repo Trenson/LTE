@@ -91,6 +91,8 @@ private:
   uint32_t    m_numOfFrames;
   uint16_t    m_packetPayload;
   ofstream    m_senderTraceFile;
+  string      m_videoRateFileName;
+  ofstream    m_videoRateFile;
   uint32_t    m_packetId;
   uint16_t    m_port;
   Ptr<Socket> m_socket;

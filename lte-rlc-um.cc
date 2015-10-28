@@ -57,6 +57,13 @@ LteRlcUm::LteRlcUm ()
   m_pPrevFrame = 0;
   m_pPPrevFrame = 0;
   m_nackCount = 0;
+  m_videoRateFileName = "videoRate";
+  m_videoRateFile.open(m_videoRateFileName.c_str(), ios::out);
+  if (m_videoRateFile.fail())
+   {
+     NS_FATAL_ERROR(">> EvalvidServer: Error while opening video rate file: " << m_videoRateFileName.c_str());
+     return;
+   }
 }
 
 LteRlcUm::~LteRlcUm ()
@@ -73,7 +80,7 @@ LteRlcUm::GetTypeId (void)
     .AddConstructor<LteRlcUm> ()
     .AddAttribute ("MaxTxBufferSize",
                    "Maximum Size of the Transmission Buffer (in Bytes)",
-                   UintegerValue (8 * 1024),
+                   UintegerValue (10 * 1024),
                    MakeUintegerAccessor (&LteRlcUm::m_maxTxBufferSize),
                    MakeUintegerChecker<uint32_t> ())
     ;
@@ -138,7 +145,8 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
   uint32_t Uid;
   string frameType;
   string nextFrameType;
-  uint32_t frameSize;  
+  uint32_t frameSize;
+  
   m_revVideoTypeFileName = "videoType";
   ifstream revVideoTypeFile(m_revVideoTypeFileName.c_str(), ios::in);
   if (revVideoTypeFile.fail())
@@ -166,11 +174,12 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
     {
       if(0 == UMErrorModel()) {
       
-      if((m_prevFrame == 0 && m_pPPrevFrame == 1)) {
+      if(/*(m_prevFrame == 0 && m_pPPrevFrame == 1)*/1) {
       //if(m_nackCount < 3) {
       /** Chun: Wireless packet loss: restore the loss packet */
       Ptr<Packet> tempP;
               /** Chun: Chect the I-Frame buffer first */
+
               if(m_hBuffer.size() != 0 ){
                 tempP = (*(m_hBuffer.begin ()))->Copy ();
                 
@@ -249,11 +258,11 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
     }
   else
     {
-      /*if(m_frameType.compare("H") == 0 ){
+      if(m_frameType.compare("H") == 0 ){
           m_hBuffer.push_back(p);
       } else {
           m_pBuffer.push_back(p);
-      }*/
+      }
       // Discard full RLC SDU
       NS_LOG_LOGIC ("TxBuffer is full. RLC SDU discarded "<< m_frameId <<". frame type: " << m_frameType);
       NS_LOG_LOGIC ("MaxTxBufferSize = " << m_maxTxBufferSize);
@@ -267,6 +276,9 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
       if((m_prevFrame == 0 && m_pPrevFrame == 0 && m_pPPrevFrame == 0)) {
         /** Chun: Congestion packet loss: adjust video rate */
         NS_LOG_LOGIC ("Congestion packet loss: " << m_frameId );
+        m_videoRateFile  << 40 << std::endl; 
+      } else {
+        m_videoRateFile  << 52 << std::endl; 
       }
     }
   NS_LOG_LOGIC ("calNackRatio(): "<<calNackRatio()<<" m_nackNum: "<<m_nackNum);

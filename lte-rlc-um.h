@@ -26,6 +26,13 @@
 
 #include <ns3/event-id.h>
 #include <map>
+#include <fstream>
+#include <iostream>
+using std::ifstream;
+using std::ofstream;
+using std::ostream;
+using std::ios;
+using std::endl;
 using namespace std;
 namespace ns3 {
 
@@ -102,6 +109,8 @@ private:
   uint32_t MINPDUs;
   double m_ratio;
   double calNackRatio();
+  string m_videoRateFileName;
+  ofstream m_videoRateFile;
   string m_revVideoTypeFileName;
   string m_frameType;
   uint32_t m_frameSize;

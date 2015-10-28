@@ -313,8 +313,22 @@ EvalvidServer::Send ()
             }
           else
             {
-              m_sendEvent = Simulator::Schedule (m_videoInfoMapIt->second->packetInterval,
-                                                 &EvalvidServer::Send, this);             
+                uint16_t rate = 50;
+                m_videoRateFileName = "videoRate";
+                ifstream videoRateFile(m_videoRateFileName.c_str(), ios::in);
+                if (videoRateFile.fail())
+                {
+                        NS_FATAL_ERROR(">> EvalvidServer: Error while opening receive video rate file: " << m_videoRateFileName.c_str());
+                        return;
+                }
+                while (videoRateFile >> rate)
+                {
+                }
+              rate = rate > 100 ? 42 : rate;
+              NS_LOG_INFO(">> rate :" << rate);
+              Time interval = m_videoInfoMapIt->second->packetInterval/rate;
+              NS_LOG_INFO(">> interval :" << interval);
+              m_sendEvent = Simulator::Schedule (interval, &EvalvidServer::Send, this);             
             }
         }
     }
