@@ -99,8 +99,15 @@ private:
   Address     m_peerAddress;
   EventId     m_sendEvent;
   // chun: add
+  string      m_oldVideoTraceFileName;
   string      m_videoTypeFileName;
   ofstream    m_videoTypeFile;
+  double m_chunkSize;
+  double m_chunkTime;
+  double m_aveBitrate;
+  uint32_t m_chunkCnt;
+  string m_bitRateFileName;
+  ofstream m_bitRateFile;
   double pG;
   double pB;
   double pGB;
@@ -117,8 +124,10 @@ private:
   {
     string   frameType;
     uint32_t frameSize;
+    uint32_t frameId;
     uint16_t numOfUdpPackets;
     Time     packetInterval;
+    Time     sendTime;
   };
 
   map<uint32_t, m_videoInfoStruct_t*> m_videoInfoMap;
