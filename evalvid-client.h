@@ -97,11 +97,33 @@ private:
   Ipv4Address m_peerAddress;
   uint16_t    m_peerPort;
   EventId     m_sendEvent;
-  std::vector < double > m_thoughout; 
+  //std::vector < double > m_thoughout; 
+  string m_bitRateFileName;
+  ofstream m_bitRateFile;
   double m_time;
+  double m_lastTime;
   double m_data;
+  double m_oneSdata;
   double m_sumThoughout;
   uint16_t m_count;
+  uint16_t m_flag;
+  double m_bitrate;
+  string m_revVideoTypeFileName;
+  string m_frameType;
+  uint32_t m_frameSize;
+  uint32_t m_frameId;
+  uint32_t m_frameNo;
+  uint32_t k;
+  uint32_t N;
+  uint32_t m_lastFrame;
+  double X;
+  double m_encoderSize;
+  uint32_t m_oldFrameNo;
+  string m_videoRateFileName;
+  ofstream m_videoRateFile;
+  string m_thoughoutFileName;
+  ofstream m_thoughoutFile;
+  double m_thoughout;
 };
 
 } // namespace ns3

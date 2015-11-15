@@ -71,6 +71,25 @@ EvalvidClient::EvalvidClient ()
   m_time = -1;
   m_sumThoughout = 0;
   m_count = 0;
+  m_flag = 0;
+  m_lastFrame = 0;
+  m_encoderSize = 0.0;
+  m_oneSdata = 0.0;
+  X = 0.0;
+  m_videoRateFileName = "videoRate";
+  m_videoRateFile.open(m_videoRateFileName.c_str(), ios::out);
+  if (m_videoRateFile.fail())
+   {
+     NS_FATAL_ERROR(">> EvalvidServer: Error while opening video rate file: " << m_videoRateFileName.c_str());
+     return;
+   }
+  m_thoughoutFileName = "thoughoutFile";
+  m_thoughoutFile.open(m_thoughoutFileName.c_str(), ios::out);
+  if (m_thoughoutFile.fail())
+   {
+     NS_FATAL_ERROR(">> EvalvidServer: Error while opening video rate file: " << m_thoughoutFileName.c_str());
+     return;
+   }
 }
 
 EvalvidClient::~EvalvidClient ()
@@ -172,18 +191,100 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                                << std::endl;
               double time = Simulator::Now().ToDouble(ns3::Time::S);
               m_data += packet->GetSize();
+              m_oneSdata += packet->GetSize();
               if(m_time < 0) {
                   m_time = time;
+                  m_lastTime = time;
               }
-              if(time - m_time >= 0.01){
-                  double thoughout = 8*m_data/(1000*(time-m_time));
+                  uint32_t frameId;
+                  uint32_t Uid;
+                  uint32_t frameNo;
+                  string frameType;
+                  uint32_t frameSize;
+                  m_revVideoTypeFileName = "videoType";
+                  ifstream revVideoTypeFile(m_revVideoTypeFileName.c_str(), ios::in);
+                  if (revVideoTypeFile.fail())
+                    {
+                      NS_FATAL_ERROR(">> EvalvidServer: Error while opening receive video trace file: " << m_revVideoTypeFileName.c_str());
+                      return;
+                  }
+                  while (revVideoTypeFile >> frameId >> Uid >> frameNo >> frameType >> frameSize)
+                    {
+                      if(packetId == frameId) {
+                          m_frameType = frameType;
+                          m_frameSize = frameSize;
+                          m_frameId = frameId;
+                          m_frameNo = frameNo;
+                      }
+                    }
+                NS_LOG_DEBUG("m_oldFrameNo: " << m_oldFrameNo << ", m_frameNo: " << m_frameNo);
+                if(m_oldFrameNo != m_frameNo) {
+                  m_encoderSize = 0;
+                }
+                m_encoderSize += packet->GetSize();
+              if (time - m_time >= 0.1){
+                  NS_LOG_DEBUG(">> time = " << time << ",>> m_time = " << m_time);
+                  m_thoughout = 8*m_data/(1024*(time - m_time));
                   m_time = time;
+                  NS_LOG_DEBUG(">> thoughout = " << m_thoughout << ",>> m_data = " << m_data);
                   m_data = 0;
-                  NS_LOG_DEBUG(">> thoughout = " <<thoughout);
-                  m_sumThoughout += thoughout;
+                  m_sumThoughout += m_thoughout;
                   m_count++;
+                double bitrate = 0.0;
+                uint32_t currentFrame;
+                string fileName;
+                m_bitRateFileName = "bitRate";
+                ifstream bitRateFile(m_bitRateFileName.c_str(), ios::in);
+                if (bitRateFile.fail())
+                {
+                        NS_FATAL_ERROR(">> EvalvidServer: Error while opening receive bit rate file: " << m_bitRateFileName.c_str());
+                        return;
+                }
+                while (bitRateFile >> bitrate >> currentFrame >> fileName)
+                {
+                }
+                if(m_bitrate != bitrate) {
+                  m_flag = 0;                
+                }
+                N = currentFrame - m_lastFrame;
+                m_lastFrame = currentFrame;
+                m_bitrate = bitrate;
+                NS_LOG_DEBUG(">> file bitrate = " <<bitrate);
+                if (m_thoughout < bitrate && m_flag == 0) {
+                  NS_LOG_DEBUG("1st feedback, " << "frameNo: " << m_frameNo << ", frameId: " << m_frameId);
+                  m_flag = 1;
+                } else if (m_thoughout < bitrate && m_flag == 1){
+                  NS_LOG_DEBUG("2nd feedback, " << "frameNo: " << m_frameNo << ", frameId: " << m_frameId);
+                  k = m_frameNo;
+                    ifstream revVideoTypeFile(m_revVideoTypeFileName.c_str(), ios::in);
+                    while (revVideoTypeFile >> frameId >> Uid >> frameNo >> frameType >> frameSize)
+                    {
+                      if(frameNo == m_frameNo) {
+                          X = frameSize*1.0/2;
+                      }
+                    }
+                  m_encoderSize -= packet->GetSize();
+                  NS_LOG_DEBUG("XXX: " << X << " ,m_encoderSize: " << m_encoderSize);
+                  if(m_encoderSize > X){
+                       m_videoRateFile  << m_thoughout << std::endl; 
+                  } 
+                }
+              } 
+              if (time - m_lastTime >= 1){
+                m_thoughoutFile << std::fixed << std::setprecision(4) << time
+                                << std::setfill(' ') << std::setw(16) << 8*m_oneSdata/(1024*(time - m_lastTime))
+                                << std::setfill(' ') << std::setw(16) << m_bitrate
+                                << std::endl; 
+                NS_LOG_DEBUG("one second data: " << 8*m_oneSdata/1024 << ",time interval: " << (time - m_lastTime));
+                
+                if (m_bitrate * (time - m_lastTime) > 8*m_oneSdata/1024) {
+                    NS_LOG_DEBUG("bitrate: " << m_bitrate << ",time: " << time);
+                }
+                m_lastTime = time;
+                m_oneSdata = 0;
               }
-              NS_LOG_DEBUG(">> average thoughout = " <<m_sumThoughout/m_count);
+              m_oldFrameNo = m_frameNo;
+              NS_LOG_DEBUG(">> average thoughout = " << m_sumThoughout/m_count << ">> m_sumThoughout = " << m_sumThoughout << "m_count = " << m_count);
            }
         }
     }
