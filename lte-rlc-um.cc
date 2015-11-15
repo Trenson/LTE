@@ -57,13 +57,13 @@ LteRlcUm::LteRlcUm ()
   m_pPrevFrame = 0;
   m_pPPrevFrame = 0;
   m_nackCount = 0;
-  /*m_videoRateFileName = "videoRate";
+  m_videoRateFileName = "videoRate";
   m_videoRateFile.open(m_videoRateFileName.c_str(), ios::out);
   if (m_videoRateFile.fail())
    {
      NS_FATAL_ERROR(">> EvalvidServer: Error while opening video rate file: " << m_videoRateFileName.c_str());
      return;
-   }*/
+   }
 }
 
 LteRlcUm::~LteRlcUm ()
@@ -80,7 +80,7 @@ LteRlcUm::GetTypeId (void)
     .AddConstructor<LteRlcUm> ()
     .AddAttribute ("MaxTxBufferSize",
                    "Maximum Size of the Transmission Buffer (in Bytes)",
-                   UintegerValue (100 * 1024),
+                   UintegerValue (10 * 1024),
                    MakeUintegerAccessor (&LteRlcUm::m_maxTxBufferSize),
                    MakeUintegerChecker<uint32_t> ())
     ;
@@ -143,7 +143,6 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
   /** Chun: Read frameType from the file named videoType */
   uint32_t frameId;
   uint32_t Uid;
-  uint32_t frameNo;
   string frameType;
   string nextFrameType;
   uint32_t frameSize;
@@ -155,7 +154,7 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
       NS_FATAL_ERROR(">> EvalvidServer: Error while opening receive video trace file: " << m_revVideoTypeFileName.c_str());
       return;
   }
-  while (revVideoTypeFile >> frameId >> Uid >> frameNo >> frameType >> frameSize)
+  while (revVideoTypeFile >> frameId >> Uid >> frameType >> frameSize)
     {
       if(Uid == p->GetUid()) {
           m_frameType = frameType;
@@ -173,7 +172,7 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
 
   if (m_txBufferSize + p->GetSize () <= m_maxTxBufferSize)
     {
-      if(0 <= UMErrorModel()) {
+      if(0 == UMErrorModel()) {
       
       if(/*(m_prevFrame == 0 && m_pPPrevFrame == 1)*/1) {
       //if(m_nackCount < 3) {
@@ -181,7 +180,7 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
       Ptr<Packet> tempP;
               /** Chun: Chect the I-Frame buffer first */
 
-              /*if(m_hBuffer.size() != 0 ){
+              if(m_hBuffer.size() != 0 ){
                 tempP = (*(m_hBuffer.begin ()))->Copy ();
                 
                 while  (m_txBufferSize + tempP->GetSize () <= (m_maxTxBufferSize - p->GetSize ()) && m_hBuffer.size() != 0){
@@ -198,10 +197,10 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
                 }
                 }
                 NS_LOG_LOGIC ("erase hBuffer = " << m_hBuffer.size() );
-              }*/
+              }
 
               /** then chect the P-Frame buffer */
-              /*if(m_pBuffer.size() != 0 ){
+              if(m_pBuffer.size() != 0 ){
                 tempP = (*(m_pBuffer.begin ()))->Copy ();
                 
                 while  (m_txBufferSize + tempP->GetSize () <= (m_maxTxBufferSize - p->GetSize ()) && m_pBuffer.size() != 0){
@@ -218,7 +217,7 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
                 }
                 }
                 NS_LOG_LOGIC ("erase pBuffer = " << m_pBuffer.size() );
-              }*/
+              }
       }/*else if(m_nackCount >= 3) {
        
         m_nackCount = 0;
@@ -243,7 +242,7 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
       m_pPPrevFrame = m_pPrevFrame;
       m_pPrevFrame = m_prevFrame;
       m_prevFrame = 1;
-      } /*else {        
+      } else {        
         NS_LOG_LOGIC ("Wireless discarded "<< m_frameId <<". frame type: " << m_frameType);
         m_nackNum++;
         m_nackCount++;
@@ -255,7 +254,7 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
         } else {
           m_pBuffer.push_back(p);
         }
-      }*/
+      }
     }
   else
     {
@@ -277,9 +276,9 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
       if((m_prevFrame == 0 && m_pPrevFrame == 0 && m_pPPrevFrame == 0)) {
         /** Chun: Congestion packet loss: adjust video rate */
         NS_LOG_LOGIC ("Congestion packet loss: " << m_frameId );
-        //m_videoRateFile  << 40 << std::endl; 
+        m_videoRateFile  << 40 << std::endl; 
       } else {
-        //m_videoRateFile  << 52 << std::endl; 
+        m_videoRateFile  << 52 << std::endl; 
       }
     }
   NS_LOG_LOGIC ("calNackRatio(): "<<calNackRatio()<<" m_nackNum: "<<m_nackNum);
