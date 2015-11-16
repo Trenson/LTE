@@ -76,6 +76,7 @@ EvalvidClient::EvalvidClient ()
   m_encoderSize = 0.0;
   m_oneSdata = 0.0;
   X = 0.0;
+  m_interrupDuration = 0.0;
   m_videoRateFileName = "videoRate";
   m_videoRateFile.open(m_videoRateFileName.c_str(), ios::out);
   if (m_videoRateFile.fail())
@@ -192,6 +193,14 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
               double time = Simulator::Now().ToDouble(ns3::Time::S);
               m_data += packet->GetSize();
               m_oneSdata += packet->GetSize();
+              m_interrupData -= packet->GetSize();
+              if (0 > m_interrupData && 1 == m_interruptFlag) {
+                m_interrupDuration += (time - m_interrupTime);
+                NS_LOG_DEBUG("interruption time: " << time - m_interrupTime); 
+                NS_LOG_DEBUG("interruption count: " << m_interruptCnt);
+                NS_LOG_DEBUG("interruption duration: " << m_interrupDuration); 
+                m_interruptFlag = 0;
+              }
               if(m_time < 0) {
                   m_time = time;
                   m_lastTime = time;
@@ -201,7 +210,7 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                   uint32_t frameNo;
                   string frameType;
                   uint32_t frameSize;
-                  m_revVideoTypeFileName = "videoType";
+                  m_revVideoTypeFileName = "videoType1";
                   ifstream revVideoTypeFile(m_revVideoTypeFileName.c_str(), ios::in);
                   if (revVideoTypeFile.fail())
                     {
@@ -222,14 +231,6 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                   m_encoderSize = 0;
                 }
                 m_encoderSize += packet->GetSize();
-              if (time - m_time >= 0.1){
-                  NS_LOG_DEBUG(">> time = " << time << ",>> m_time = " << m_time);
-                  m_thoughout = 8*m_data/(1024*(time - m_time));
-                  m_time = time;
-                  NS_LOG_DEBUG(">> thoughout = " << m_thoughout << ",>> m_data = " << m_data);
-                  m_data = 0;
-                  m_sumThoughout += m_thoughout;
-                  m_count++;
                 double bitrate = 0.0;
                 uint32_t currentFrame;
                 string fileName;
@@ -244,32 +245,54 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 {
                 }
                 if(m_bitrate != bitrate) {
-                  m_flag = 0;                
+                    m_flag = 0; // mean a new chunk               
                 }
-                N = currentFrame - m_lastFrame;
-                m_lastFrame = currentFrame;
-                m_bitrate = bitrate;
+                if (currentFrame != m_lastFrame) {
+                        N = currentFrame - m_lastFrame; // N frame in a chunk
+                        m_lastFrame = currentFrame;
+                }
+                f = m_frameNo - currentFrame;
+                m_bitrate = bitrate; // current chunk bitrate
                 NS_LOG_DEBUG(">> file bitrate = " <<bitrate);
-                if (m_thoughout < bitrate && m_flag == 0) {
-                  NS_LOG_DEBUG("1st feedback, " << "frameNo: " << m_frameNo << ", frameId: " << m_frameId);
-                  m_flag = 1;
-                } else if (m_thoughout < bitrate && m_flag == 1){
-                  NS_LOG_DEBUG("2nd feedback, " << "frameNo: " << m_frameNo << ", frameId: " << m_frameId);
-                  k = m_frameNo;
-                    ifstream revVideoTypeFile(m_revVideoTypeFileName.c_str(), ios::in);
-                    while (revVideoTypeFile >> frameId >> Uid >> frameNo >> frameType >> frameSize)
-                    {
-                      if(frameNo == m_frameNo) {
-                          X = frameSize*1.0/2;
-                      }
-                    }
-                  m_encoderSize -= packet->GetSize();
-                  NS_LOG_DEBUG("XXX: " << X << " ,m_encoderSize: " << m_encoderSize);
+              if (time - m_time >= 0.1){
+                        NS_LOG_DEBUG(">> time = " << time << ",>> m_time = " << m_time);
+                        m_thoughout = 8*m_data/(1024*(time - m_time));
+                        m_time = time;
+                        NS_LOG_DEBUG(">> thoughout = " << m_thoughout << ",>> m_data = " << m_data);
+                        m_data = 0;
+                        m_sumThoughout += m_thoughout;
+                        m_count++;
+                        /* Decision algorithm of thoughput degradation */
+                        if (m_thoughout < bitrate && m_flag == 0) {
+                          NS_LOG_DEBUG("1st feedback, " << "frameNo: " << m_frameNo << ", frameId: " << m_frameId);
+                          m_flag = 1;
+                        } else if (m_thoughout < bitrate && m_flag == 1){
+                          NS_LOG_DEBUG("2nd feedback, " << "frameNo: " << m_frameNo << ", frameId: " << m_frameId);
+                          m_flag = 2;
+                          k = m_frameNo; // 2nd feedback is received at frame k
+                          ifstream revVideoTypeFile(m_revVideoTypeFileName.c_str(), ios::in);
+                          while (revVideoTypeFile >> frameId >> Uid >> frameNo >> frameType >> frameSize)
+                          {
+                              if(frameNo == (currentFrame + 1)) {
+                                  X = frameSize*1.0/2;
+                                  break;
+                              }
+                          }
+                          NS_LOG_DEBUG("XXX: " << X << ", currentFrame: " << currentFrame);
+                          m_encoderSize -= packet->GetSize();
+                          NS_LOG_DEBUG("k: " << k << ", m_encoderSize: " << m_encoderSize);
+                        }
+              }
+                /* Decision of bitrate shift */
+                if (m_flag == 2 && m_oldFrameNo != m_frameNo) {
                   if(m_encoderSize > X){
-                       m_videoRateFile  << m_thoughout << std::endl; 
+                     m_videoRateFile  << m_thoughout << std::endl; 
+                  }
+                  if(f - k > 5 || f == N){
+                     m_videoRateFile  << m_thoughout << std::endl; 
                   } 
+                  NS_LOG_DEBUG("fff: " << f);
                 }
-              } 
               if (time - m_lastTime >= 1){
                 m_thoughoutFile << std::fixed << std::setprecision(4) << time
                                 << std::setfill(' ') << std::setw(16) << 8*m_oneSdata/(1024*(time - m_lastTime))
@@ -278,7 +301,11 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 NS_LOG_DEBUG("one second data: " << 8*m_oneSdata/1024 << ",time interval: " << (time - m_lastTime));
                 
                 if (m_bitrate * (time - m_lastTime) > 8*m_oneSdata/1024) {
-                    NS_LOG_DEBUG("bitrate: " << m_bitrate << ",time: " << time);
+                    m_interrupTime = time;
+                    NS_LOG_DEBUG("interruption, bitrate: " << m_bitrate << ", interrupTime: " << m_interrupTime);
+                    m_interrupData = 1024 * m_bitrate * (time - m_lastTime)/8 - m_oneSdata;
+                    m_interruptCnt ++;
+                    m_interruptFlag = 1;
                 }
                 m_lastTime = time;
                 m_oneSdata = 0;

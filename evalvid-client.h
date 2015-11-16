@@ -102,6 +102,11 @@ private:
   ofstream m_bitRateFile;
   double m_time;
   double m_lastTime;
+  double m_interrupTime;
+  double m_interrupData;
+  uint16_t m_interruptCnt;
+  uint16_t m_interruptFlag;
+  double m_interrupDuration;
   double m_data;
   double m_oneSdata;
   double m_sumThoughout;
@@ -115,6 +120,7 @@ private:
   uint32_t m_frameNo;
   uint32_t k;
   uint32_t N;
+  uint32_t f;
   uint32_t m_lastFrame;
   double X;
   double m_encoderSize;
