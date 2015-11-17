@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include "ns3/string.h"
 #include "ns3/qos-tag.h"
+#include <math.h>
 
 
 namespace ns3 {
@@ -299,7 +300,7 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                   }
                   NS_LOG_DEBUG("fff: " << f);
                 } else if (m_flag == 3 && m_thoughout > m_bitrate && m_oldFrameNo != m_frameNo) {
-                     m_videoRateFile  << m_thoughout*1.3 << std::endl; 
+                     m_videoRateFile  << m_thoughout * 1 << std::endl; 
                      m_flag = 4; // break for-loop
                 }
               if (time - m_lastTime >= 1){
@@ -318,12 +319,65 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 }
                 m_lastTime = time;
                 m_oneSdata = 0;
+                // double mos = calO_41 (m_bitrate, m_interrupDuration/m_interruptCnt, m_interruptCnt);
+                NS_LOG_DEBUG("MOS = " << calO_41 (m_bitrate, m_interrupDuration/m_interruptCnt, m_interruptCnt));
+                NS_LOG_DEBUG("MOS1 = " << calO_41 (1397, 0, 0));
+                NS_LOG_DEBUG("MOS2 = " << calO_41 (1079, 0.6, 3));
+                NS_LOG_DEBUG("MOS3 = " << calO_41 (949, 0, 0));
               }
               m_oldFrameNo = m_frameNo;
               NS_LOG_DEBUG(">> average thoughout = " << m_sumThoughout/m_count << ">> m_sumThoughout = " << m_sumThoughout << "m_count = " << m_count);
            }
         }
     }
+}
+
+/* Model output O.23 */
+double
+EvalvidClient::calO_23 (double v_br)
+{
+  double v_mosc;
+  double v_dc;
+  double v_abif = 31000; // average number of bytes per I-frame
+  double v_nbr = (v_br * 8 * 30)/(1000 * 30); // Eq. 6-31
+  double v_ccf = sqrt(v_br/(v_abif * 15.0)) > 1.10 ? 1.10 : sqrt(v_br/(v_abif * 15.0)); // Eq. 6-32
+  v_dc = 4/(1 + pow(v_nbr/(104.0*v_ccf + 1.0),(0.01*v_ccf + 1.1))); // Eq. 6-40
+  v_mosc = (5 - v_dc)*(1 + 3.4*v_ccf - 0.969*v_ccf*log(1000/30)); // Eq.6-38
+  return calO_32 (v_mosc);
+}
+
+/* Model output O.32 */
+double
+EvalvidClient::calO_32 (double o23)
+{
+  double av_mosc;
+  av_mosc = o23; //0.7977*o23 + 0.02472*o23; because no audio
+  return av_mosc;
+}
+
+/* Model output O.24 */
+double
+EvalvidClient::calO_24 (double L, uint32_t N)
+{
+  double pBufInd;
+  double tmpStall1 = 1.66 - 1.72*(pow(2.718, (-0.04*L - 0.36)*N)); // III-1
+  double tmpStall2 = tmpStall1 > 4 ? 4 : tmpStall1; // min
+  double degStall = tmpStall2 > 0 ? tmpStall2 : 0; // max
+  double degT0 = 0; // III-3
+  double tmpPb = (degStall + degT0) < 4 ? (degStall + degT0) : 4; // III-4
+  pBufInd = 5 - (tmpPb > 0 ? tmpPb : 0);
+  return pBufInd;
+}
+
+/* Model output O.41 */
+double
+EvalvidClient::calO_41 (double v_br, double L, uint32_t N)
+{
+  double o32 = calO_23 (v_br);
+  double o24 = calO_24 (L, N);
+  double tmp = (o32 - 5 + o24) < 5 ? (o32 - 5 + o24) : 5;
+  double Qms = tmp > 1 ? tmp : 1;
+  return Qms;
 }
 
 } // Namespace ns3

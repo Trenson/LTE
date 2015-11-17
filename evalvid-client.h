@@ -90,6 +90,10 @@ private:
 
   void Send (void);
   void HandleRead (Ptr<Socket> socket);
+  double calO_23 (double v_br);
+  double calO_32 (double o23);
+  double calO_24 (double L, uint32_t N);
+  double calO_41 (double v_br, double L, uint32_t N);
 
   ofstream    receiverDumpFile;
   string      receiverDumpFileName;
