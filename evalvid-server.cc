@@ -218,6 +218,7 @@ EvalvidServer::Send ()
 {
   NS_LOG_FUNCTION( this << Simulator::Now().GetSeconds());
   double rate = 0;
+  double scale = 1.0;
   m_videoRateFileName = "videoRate";
   ifstream videoRateFile(m_videoRateFileName.c_str(), ios::in);
   if (videoRateFile.fail())
@@ -225,38 +226,38 @@ EvalvidServer::Send ()
          NS_FATAL_ERROR(">> EvalvidServer: Error while opening receive video rate file: " << m_videoRateFileName.c_str());
          return;
   }
-  while (videoRateFile >> rate)
+  while (videoRateFile >> rate) // read the rate when it decreases
   {
   }
-  if (m_lastRate != rate && 3 < m_chunkCnt) {
-          if (rate >= 2850) {
+  if (m_lastRate != rate /*&& 3 < m_chunkCnt*/) {
+          if (rate/scale >= 2850) {
                 m_videoTraceFileName = "st_foreman_cif_2M.st";
                 m_fileName = 2;
-          } else if (rate >= 2570) {
+          } else if (rate/scale >= 2570) {
                 m_videoTraceFileName = "st_foreman_cif_1.8M.st";
                 m_fileName = 1.8;
-          } else if (rate >= 2280) {
+          } else if (rate/scale >= 2280) {
                 m_videoTraceFileName = "st_foreman_cif_1.6M.st";
                 m_fileName = 1.6;
-          } else if (rate >= 2000) {
+          } else if (rate/scale >= 2000) {
                 m_videoTraceFileName = "st_foreman_cif_1.4M.st";
                 m_fileName = 1.4;
-          } else if (rate >= 1710) {
+          } else if (rate/scale >= 1710) {
                 m_videoTraceFileName = "st_foreman_cif_1.2M.st";
                 m_fileName = 1.2;
-          } else if (rate >= 1420) {
+          } else if (rate/scale >= 1420) {
                 m_videoTraceFileName = "st_foreman_cif_1M.st";
                 m_fileName = 1;
-          } else if (rate >= 1140) {
+          } else if (rate/scale >= 1140) {
                 m_videoTraceFileName = "st_foreman_cif_0.8M.st";
                 m_fileName = 0.8;
-          } else if (rate >= 850) {
+          } else if (rate/scale >= 850) {
                 m_videoTraceFileName = "st_foreman_cif_0.6M.st";
                 m_fileName = 0.6;
-          } else if (rate >= 570) {
+          } else if (rate/scale >= 570) {
                 m_videoTraceFileName = "st_foreman_cif_0.4M.st";
                 m_fileName = 0.4;
-          } else if (rate >= 285) {
+          } else if (rate/scale >= 285) {
                 m_videoTraceFileName = "st_foreman_cif_0.2M.st";
                 m_fileName = 0.2;
           }
@@ -424,14 +425,14 @@ EvalvidServer::Send ()
                 m_chunkTime = 0; // m_videoInfoMapIt->second->sendTime.ToDouble(Time::S);
                 m_chunkSize = 0;
                 m_aveBitrate += bitrate;
-                NS_LOG_INFO(">> m_aveBitrate :" << m_aveBitrate*3/m_sumCnt << ", chunkCnt :" << m_chunkCnt);
+                m_sumCnt++;
+                NS_LOG_INFO(">> m_aveBitrate :" << m_aveBitrate/m_sumCnt << ", chunkCnt :" << m_chunkCnt);
                 m_bitRateFile  << std::fixed << std::setprecision(4) << bitrate
                                << std::setfill(' ') << std::setw(16) << m_videoInfoMapIt->second->frameId - 1
                                << std::setfill(' ') << std::setw(16) << m_videoTraceFileName
                                << std::endl; 
                 }
                 m_chunkCnt++;
-                m_sumCnt++;
                 m_frameId = m_videoInfoMapIt->second->frameId - 1;           
               } 
 	      m_chunkSize += m_videoInfoMapIt->second->frameSize;

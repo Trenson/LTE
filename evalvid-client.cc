@@ -245,16 +245,16 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 {
                 }
                 if(m_bitrate != bitrate) {
-                    m_flag = 0; // mean a new chunk               
+                                   
                 }
                 if (currentFrame != m_lastFrame) {
                         N = currentFrame - m_lastFrame; // N frame in a chunk
                         m_lastFrame = currentFrame;
+                        m_flag = 0; // mean a new chunk
                 }
                 f = m_frameNo - currentFrame;
                 m_bitrate = bitrate; // current chunk bitrate
-                NS_LOG_DEBUG(">> file bitrate = " <<bitrate);
-              if (time - m_time >= 0.1){
+              if (time - m_time >= 0.2){
                         NS_LOG_DEBUG(">> time = " << time << ",>> m_time = " << m_time);
                         m_thoughout = 8*m_data/(1024*(time - m_time));
                         m_time = time;
@@ -263,11 +263,13 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                         m_sumThoughout += m_thoughout;
                         m_count++;
                         /* Decision algorithm of thoughput degradation */
-                        if (m_thoughout < bitrate && m_flag == 0) {
+                        if (m_thoughout < m_bitrate && m_flag == 0) {
                           NS_LOG_DEBUG("1st feedback, " << "frameNo: " << m_frameNo << ", frameId: " << m_frameId);
+                          NS_LOG_DEBUG(">> 1st bitrate = " << m_bitrate << ", thoughput = " << m_thoughout);
                           m_flag = 1;
-                        } else if (m_thoughout < bitrate && m_flag == 1){
+                        } else if (m_thoughout < m_bitrate && m_flag == 1){
                           NS_LOG_DEBUG("2nd feedback, " << "frameNo: " << m_frameNo << ", frameId: " << m_frameId);
+                          NS_LOG_DEBUG(">> 2nd bitrate = " << m_bitrate << ", thoughput = " << m_thoughout);
                           m_flag = 2;
                           k = m_frameNo; // 2nd feedback is received at frame k
                           ifstream revVideoTypeFile(m_revVideoTypeFileName.c_str(), ios::in);
@@ -286,12 +288,19 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 /* Decision of bitrate shift */
                 if (m_flag == 2 && m_oldFrameNo != m_frameNo) {
                   if(m_encoderSize > X){
+                     m_flag = 3; // break for-loop
                      m_videoRateFile  << m_thoughout << std::endl; 
+                     NS_LOG_DEBUG("conduct bitrate shift 1: f = " << f);
                   }
-                  if(f - k > 5 || f == N){
+                  if (f - k > 5 || f == N) {
+                     m_flag = 3; // break for-loop
                      m_videoRateFile  << m_thoughout << std::endl; 
-                  } 
+                     NS_LOG_DEBUG("conduct bitrate shift 2: f = " << f);
+                  }
                   NS_LOG_DEBUG("fff: " << f);
+                } else if (m_flag == 3 && m_thoughout > m_bitrate && m_oldFrameNo != m_frameNo) {
+                     m_videoRateFile  << m_thoughout*1.3 << std::endl; 
+                     m_flag = 4; // break for-loop
                 }
               if (time - m_lastTime >= 1){
                 m_thoughoutFile << std::fixed << std::setprecision(4) << time
