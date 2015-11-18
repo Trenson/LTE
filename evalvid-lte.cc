@@ -163,25 +163,25 @@ main (int argc, char *argv[])
   server.SetAttribute ("SenderTraceFilename", StringValue("st_foreman_cif_2M.st")); //foreman_qcif.st
   server.SetAttribute ("SenderDumpFilename", StringValue("sd"));
   ApplicationContainer apps = server.Install(remoteHostContainer.Get(0));
-  apps.Start (Seconds (10.0));
+  apps.Start (Seconds (0.0));
   apps.Stop (Seconds (99.0));
   
   EvalvidClientHelper client (internetIpIfaces.GetAddress (1), port);
   client.SetAttribute ("ReceiverDumpFilename", StringValue("rd"));
   apps = client.Install (ueNodes.Get(0));
-  apps.Start (Seconds (10.0));
+  apps.Start (Seconds (1.0));
   apps.Stop (Seconds (100.0));  
 
   // Set the CBR application on the cbrHost
   OnOffHelper onOff ("ns3::UdpSocketFactory",
                      Address (InetSocketAddress (ueIpIface.GetAddress (0), port)));
   onOff.SetAttribute ("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=10.0]"));
-  onOff.SetAttribute ("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=10.0]"));
-  onOff.SetAttribute ("DataRate", DataRateValue (DataRate ("8Mb/s")));
+  onOff.SetAttribute ("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=20.0]"));
+  onOff.SetAttribute ("DataRate", DataRateValue (DataRate ("12Mb/s")));
 
   apps = onOff.Install (cbrHost);
   // apps.Add (PacketSinkHelper.Install (ueNodes.Get(0)));
-  apps.Start (Seconds (10));
+  apps.Start (Seconds (1));
   apps.Stop (Seconds (100));
 
   NS_LOG_INFO ("Run Simulation.");
