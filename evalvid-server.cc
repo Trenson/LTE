@@ -343,7 +343,6 @@ EvalvidServer::Send ()
                             << std::setfill(' ') <<  std::setw(16) <<  "udp " << p->GetSize()
                             << std::endl;
 
-          // chun: add
 	  m_videoTypeFile  << std::fixed << std::setprecision(4) << m_packetId 
                            << std::setfill(' ') << std::setw(16) << p->GetUid()
                            << std::setfill(' ') << std::setw(16) << m_videoInfoMapIt->second->frameId
@@ -384,7 +383,6 @@ EvalvidServer::Send ()
                         << std::setfill(' ') <<  std::setw(16) <<  "udp " << p->GetSize()
                         << std::endl;
 
-      // chun: add
       m_videoTypeFile  << std::fixed << std::setprecision(4) << m_packetId 
                        << std::setfill(' ') << std::setw(16) << p->GetUid()
                        << std::setfill(' ') << std::setw(16) << m_videoInfoMapIt->second->frameId
@@ -407,8 +405,6 @@ EvalvidServer::Send ()
             {
               m_chunkSize += m_videoInfoMapIt->second->frameSize;
               m_sendEvent = Simulator::ScheduleNow (&EvalvidServer::Send, this);
-              NS_LOG_INFO(">> m_chunkSize :" << m_chunkSize << ", frameId :" << m_videoInfoMapIt->second->frameId 
-                        << ">> m_chunkSize :" << m_chunkSize << "  frameSize :" << m_videoInfoMapIt->second->frameSize);
             }
           else
             {
@@ -417,12 +413,12 @@ EvalvidServer::Send ()
               NS_LOG_INFO(">> interval :" << interval);
               if(m_videoInfoMapIt->second->frameType == "H") {
                 if (0 == m_chunkCnt%3 && 0 < m_chunkTime  && 0 < m_chunkCnt) {
-                NS_LOG_INFO(">> sendTime :" << m_videoInfoMapIt->second->sendTime.ToDouble(Time::S) << "  m_chunkTime :" << m_chunkTime);
-                // m_chunkTime = m_videoInfoMapIt->second->sendTime.ToDouble(Time::S) - m_chunkTime;
-                NS_LOG_INFO(">> m_chunkSize :" << m_chunkSize << "  m_chunkTime :" << m_chunkTime);
                 bitrate = m_chunkSize*8/(m_chunkTime*1024);
-                NS_LOG_INFO(">> bitrate :" << bitrate << "  frameSize :" << m_videoInfoMapIt->second->frameSize);
-                m_chunkTime = 0; // m_videoInfoMapIt->second->sendTime.ToDouble(Time::S);
+                NS_LOG_DEBUG(">> Current chunk size: " << m_chunkSize
+                             << "\tchunk Time: " << m_chunkTime
+                             << "\tframeSize: " << m_videoInfoMapIt->second->frameSize
+                             << "\tbitrate: " << bitrate);  
+                m_chunkTime = 0; 
                 m_chunkSize = 0;
                 m_aveBitrate += bitrate;
                 m_sumCnt++;
@@ -437,10 +433,12 @@ EvalvidServer::Send ()
               } 
 	      m_chunkSize += m_videoInfoMapIt->second->frameSize;
               m_chunkTime += interval.ToDouble(Time::S);
-              NS_LOG_INFO(">> m_chunkSize :" << m_chunkSize << "  frameSize :" << m_videoInfoMapIt->second->frameSize 
-                        << ", frameId :" << m_videoInfoMapIt->second->frameId << "  m_chunkTime :" << m_chunkTime);
               m_sendEvent = Simulator::Schedule (interval, &EvalvidServer::Send, this);                    
             }
+              NS_LOG_DEBUG(">> Current chunk size: " << m_chunkSize
+                             << "\tframeId: " << m_videoInfoMapIt->second->frameId 
+                             << "\tframeSize: " << m_videoInfoMapIt->second->frameSize
+                             << "\tchunk Time: " << m_chunkTime << std::endl);            
         }
       m_videoInfoMapIt++;
       if (m_videoInfoMapIt == m_videoInfoMap.end()) {

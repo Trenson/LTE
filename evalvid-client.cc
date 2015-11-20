@@ -79,6 +79,8 @@ EvalvidClient::EvalvidClient ()
   X = 0.0;
   m_interrupDuration = 0.0;
   m_videoRateFileName = "videoRate";
+  m_maxPBuf = 250 * 1024; // 200
+  m_pBuf = 0.0;
   m_videoRateFile.open(m_videoRateFileName.c_str(), ios::out);
   if (m_videoRateFile.fail())
    {
@@ -192,15 +194,25 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                                << std::setfill(' ') <<  std::setw(16) <<  "udp " << packet->GetSize()
                                << std::endl;
               double time = Simulator::Now().ToDouble(ns3::Time::S);
+              m_pBuf += packet->GetSize();
               m_data += packet->GetSize();
               m_oneSdata += packet->GetSize();
               m_interrupData -= packet->GetSize();
+              /* interruption finish */
               if (0 > m_interrupData && 1 == m_interruptFlag) {
                 m_interrupDuration += (time - m_interrupTime);
-                NS_LOG_DEBUG("interruption time: " << time - m_interrupTime); 
-                NS_LOG_DEBUG("interruption count: " << m_interruptCnt);
-                NS_LOG_DEBUG("interruption duration: " << m_interrupDuration); 
+                NS_LOG_DEBUG(">> Interruption finished: Current interruption time " << (time - m_interrupTime)
+                             << "\tInterruption frequency: " << m_interruptCnt
+                             << "\tsum of interruption time: " << m_interrupDuration << std::endl);
                 m_interruptFlag = 0;
+              }
+              /* overflow finish */
+              if (m_pBuf < m_maxPBuf && 1 == m_overflowFlag) {
+                m_overflowDuration += (time - m_overflowTime);
+                NS_LOG_DEBUG(">> Overflow finished: Current overflow time " << (time - m_overflowTime)
+                             << "\toverflow frequency: " << m_overflowCnt
+                             << "\tsum of overflow time: " << m_overflowDuration << std::endl);
+                m_overflowFlag = 0;
               }
               if(m_time < 0) {
                   m_time = time;
@@ -227,7 +239,8 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                           m_frameNo = frameNo;
                       }
                     }
-                NS_LOG_DEBUG("m_oldFrameNo: " << m_oldFrameNo << ", m_frameNo: " << m_frameNo);
+                NS_LOG_DEBUG(">> Current frame No is " << m_frameNo
+                             << "\tLast frame No is " << m_oldFrameNo << std::endl);
                 if(m_oldFrameNo != m_frameNo) {
                   m_encoderSize = 0;
                 }
@@ -256,21 +269,27 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 f = m_frameNo - currentFrame;
                 m_bitrate = bitrate; // current chunk bitrate
               if (time - m_time >= 0.2){
-                        NS_LOG_DEBUG(">> time = " << time << ",>> m_time = " << m_time);
+                        NS_LOG_DEBUG(">> Current time is " << time
+                             << "\tLast time " << m_time << std::endl);
                         m_thoughout = 8*m_data/(1024*(time - m_time));
                         m_time = time;
-                        NS_LOG_DEBUG(">> thoughout = " << m_thoughout << ",>> m_data = " << m_data);
+                        NS_LOG_DEBUG(">> Thoughput in this tao is " << m_thoughout
+                             << "\tData in this tao: " << m_data << std::endl);
                         m_data = 0;
                         m_sumThoughout += m_thoughout;
                         m_count++;
                         /* Decision algorithm of thoughput degradation */
                         if (m_thoughout < m_bitrate && m_flag == 0) {
-                          NS_LOG_DEBUG("1st feedback, " << "frameNo: " << m_frameNo << ", frameId: " << m_frameId);
-                          NS_LOG_DEBUG(">> 1st bitrate = " << m_bitrate << ", thoughput = " << m_thoughout);
+                          NS_LOG_DEBUG(">> 1st feedback, frameNo: " << m_frameNo
+                             << "\tframeId: " << m_frameId
+                             << "\tbitrate: " << m_bitrate
+                             << "\tthoughput: " << m_thoughout << std::endl);
                           m_flag = 1;
                         } else if (m_thoughout < m_bitrate && m_flag == 1){
-                          NS_LOG_DEBUG("2nd feedback, " << "frameNo: " << m_frameNo << ", frameId: " << m_frameId);
-                          NS_LOG_DEBUG(">> 2nd bitrate = " << m_bitrate << ", thoughput = " << m_thoughout);
+                          NS_LOG_DEBUG(">> 2nd feedback, frameNo: " << m_frameNo
+                             << "\tframeId: " << m_frameId
+                             << "\tbitrate: " << m_bitrate
+                             << "\tthoughput: " << m_thoughout << std::endl);
                           m_flag = 2;
                           k = m_frameNo; // 2nd feedback is received at frame k
                           ifstream revVideoTypeFile(m_revVideoTypeFileName.c_str(), ios::in);
@@ -281,9 +300,11 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                                   break;
                               }
                           }
-                          NS_LOG_DEBUG("XXX: " << X << ", currentFrame: " << currentFrame);
                           m_encoderSize -= packet->GetSize();
-                          NS_LOG_DEBUG("k: " << k << ", m_encoderSize: " << m_encoderSize);
+                          NS_LOG_DEBUG(">> CurrentFrame: " << currentFrame
+                             << "\thalf of the head size of the chunk: " << X
+                             << "\t2nd feedback is received at frame k: " << k
+                             << "\tm_encoderSize: " << m_encoderSize << std::endl);
                         }
               }
                 /* Decision of bitrate shift */
@@ -298,7 +319,6 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                      m_videoRateFile  << m_thoughout << std::endl; 
                      NS_LOG_DEBUG("conduct bitrate shift 2: f = " << f);
                   }
-                  NS_LOG_DEBUG("fff: " << f);
                 } else if (m_flag == 3 && m_thoughout > m_bitrate && m_oldFrameNo != m_frameNo) {
                      m_videoRateFile  << m_thoughout * 1 << std::endl; 
                      m_flag = 4; // break for-loop
@@ -308,25 +328,48 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                                 << std::setfill(' ') << std::setw(16) << 8*m_oneSdata/(1024*(time - m_lastTime))
                                 << std::setfill(' ') << std::setw(16) << m_bitrate
                                 << std::endl; 
-                NS_LOG_DEBUG("one second data: " << 8*m_oneSdata/1024 << ",time interval: " << (time - m_lastTime));
+                /* m_oneSdata is used for calculate thoughput in 1s */
+                NS_LOG_DEBUG(">> One second data: " << 8*m_oneSdata/1024
+                             << "\ttime interval: " << (time - m_lastTime) << std::endl);
                 
-                if (m_bitrate * (time - m_lastTime) > 8*m_oneSdata/1024) {
+                /* playback interruption happens, calculate the playback interruption */
+                if (m_bitrate * (time - m_lastTime) > 8*m_oneSdata/1024 && 0 == m_interruptFlag) {
                     m_interrupTime = time;
-                    NS_LOG_DEBUG("interruption, bitrate: " << m_bitrate << ", interrupTime: " << m_interrupTime);
+                    NS_LOG_DEBUG(">> Interruption happens, bitrate: " << m_bitrate
+                             << "\ttime: " << m_interrupTime << std::endl);
                     m_interrupData = 1024 * m_bitrate * (time - m_lastTime)/8 - m_oneSdata;
                     m_interruptCnt ++;
                     m_interruptFlag = 1;
                 }
+
+                /* overflow happens, calculate the overflow */
+                NS_LOG_DEBUG(">> Current buffer is: " << m_pBuf
+                             << "\tMax buffer size: " << m_maxPBuf << std::endl);
+                if (m_pBuf > m_maxPBuf && 0 == m_overflowFlag) {
+                   m_overflowTime = time;
+                   m_overflowCnt ++;
+                   m_overflowFlag = 1;
+                }
+                m_pBuf -= m_bitrate * (time - m_lastTime) * 1024/8;
                 m_lastTime = time;
                 m_oneSdata = 0;
                 // double mos = calO_41 (m_bitrate, m_interrupDuration/m_interruptCnt, m_interruptCnt);
-                NS_LOG_DEBUG("MOS = " << calO_41 (m_bitrate, m_interrupDuration/m_interruptCnt, m_interruptCnt));
+                /*NS_LOG_DEBUG("MOS = " << calO_41 (m_bitrate, m_interrupDuration/m_interruptCnt, m_interruptCnt));
                 NS_LOG_DEBUG("MOS1 = " << calO_41 (1397, 0, 0));
                 NS_LOG_DEBUG("MOS2 = " << calO_41 (1079, 0.6, 3));
                 NS_LOG_DEBUG("MOS3 = " << calO_41 (949, 0, 0));
+                NS_LOG_DEBUG("MOS4 = " << calO_41 (1397, 0.1, 1));
+                NS_LOG_DEBUG("MOS5 = " << calO_41 (600, 0.1, 1));
+                NS_LOG_DEBUG("MOS6 = " << calO_41 (600, 0.2, 1));*/
+                NS_LOG_DEBUG("MOS1 = " << calO_41 (1397, 0, 0, 0, 0));
+                NS_LOG_DEBUG("MOS2 = " << calO_41 (1397, 0.1, 1, 0, 0));
+                NS_LOG_DEBUG("MOS3 = " << calO_41 (1397, 0, 0, 0.1, 1));
+                NS_LOG_DEBUG("MOS4 = " << calO_41 (1397, 0.1, 1, 0.1, 1));
               }
               m_oldFrameNo = m_frameNo;
-              NS_LOG_DEBUG(">> average thoughout = " << m_sumThoughout/m_count << ">> m_sumThoughout = " << m_sumThoughout << "m_count = " << m_count);
+              NS_LOG_DEBUG(">> Average thoughout = " << m_sumThoughout/m_count
+                             << "\tSum thoughout: " << m_sumThoughout
+                             << "\tCount: " << m_count << std::endl);
            }
         }
     }
@@ -369,12 +412,29 @@ EvalvidClient::calO_24 (double L, uint32_t N)
   return pBufInd;
 }
 
+/* Model output O.25 */
+double
+EvalvidClient::calO_25 (double T, uint32_t M)
+{
+  double pBufInd;
+  double tmp1 = 1.66 - 1.72*(pow(2.718, (-0.04*T - 0.36)*M)); // III-1
+  double tmp2 = tmp1 > 4 ? 4 : tmp1; // min
+  double degOverflow = tmp2 > 0 ? tmp2 : 0; // max
+  double tmpPb = degOverflow < 4 ? degOverflow : 4; // III-4
+  pBufInd = 5 - (tmpPb > 0 ? tmpPb : 0);
+  return pBufInd;
+}
+
 /* Model output O.41 */
 double
-EvalvidClient::calO_41 (double v_br, double L, uint32_t N)
+EvalvidClient::calO_41 (double v_br, double L, uint32_t N, double T, uint32_t M)
 {
+  double a1 = 0.4175;
+  double a2 = 0.4175;
+  double a3 = 0.0247;
+  double a4 = 0.1403;
   double o32 = calO_23 (v_br);
-  double o24 = calO_24 (L, N);
+  double o24 = a1*calO_24 (L, N) + a2*calO_25 (T, M) + a3*calO_24 (L, N)*calO_25 (T, M) + a4;
   double tmp = (o32 - 5 + o24) < 5 ? (o32 - 5 + o24) : 5;
   double Qms = tmp > 1 ? tmp : 1;
   return Qms;

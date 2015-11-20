@@ -103,27 +103,26 @@ private:
   double      m_fileName;
   string      m_videoTypeFileName;
   ofstream    m_videoTypeFile;
-  double m_chunkSize;
-  double m_chunkTime;
-  double m_aveBitrate;
-  uint32_t m_chunkCnt;
-  uint32_t m_sumCnt;
-  string m_bitRateFileName;
-  ofstream m_bitRateFile;
-  double pG;
-  double pB;
-  double pGB;
-  double pBG;
-
-  double piG;
-  double piB;
-  double pGG;
-  double pBB;
-  int corrunt_state;
-  int flag;
-  double corrunt_p;
-  double m_lastRate;
-  uint32_t m_frameId;
+  double      m_chunkSize;
+  double      m_chunkTime;
+  double      m_aveBitrate;
+  uint32_t    m_chunkCnt;
+  uint32_t    m_sumCnt;
+  string      m_bitRateFileName;
+  ofstream    m_bitRateFile;
+  double      pG;
+  double      pB;
+  double      pGB;
+  double      pBG;
+  double      piG;
+  double      piB;
+  double      pGG;
+  double      pBB;
+  int         corrunt_state;
+  int         flag;
+  double      corrunt_p;
+  double      m_lastRate;
+  uint32_t    m_frameId;
   struct m_videoInfoStruct_t
   {
     string   frameType;
