@@ -79,7 +79,7 @@ EvalvidClient::EvalvidClient ()
   X = 0.0;
   m_interrupDuration = 0.0;
   m_videoRateFileName = "videoRate";
-  m_maxPBuf = 250 * 1024; // 200
+  m_maxPBuf = 10 * 1024 * 1024; // 200
   m_pBuf = 0.0;
   m_videoRateFile.open(m_videoRateFileName.c_str(), ios::out);
   if (m_videoRateFile.fail())
@@ -184,6 +184,7 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
               SeqTsHeader seqTs;
               packet->RemoveHeader (seqTs);
               uint32_t packetId = seqTs.GetSeq ();
+              double b; // threshold
 
               NS_LOG_DEBUG(">> EvalvidClient: Received packet at " << Simulator::Now().GetSeconds()
                            << "s\tid: " << packetId
@@ -197,9 +198,8 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
               m_pBuf += packet->GetSize();
               m_data += packet->GetSize();
               m_oneSdata += packet->GetSize();
-              m_interrupData -= packet->GetSize();
               /* interruption finish */
-              if (0 > m_interrupData && 1 == m_interruptFlag) {
+              if (m_pBuf == b && 1 == m_interruptFlag) {
                 m_interrupDuration += (time - m_interrupTime);
                 NS_LOG_DEBUG(">> Interruption finished: Current interruption time " << (time - m_interrupTime)
                              << "\tInterruption frequency: " << m_interruptCnt
@@ -207,13 +207,13 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 m_interruptFlag = 0;
               }
               /* overflow finish */
-              if (m_pBuf < m_maxPBuf && 1 == m_overflowFlag) {
+              /*if (m_pBuf < m_maxPBuf && 1 == m_overflowFlag) {
                 m_overflowDuration += (time - m_overflowTime);
                 NS_LOG_DEBUG(">> Overflow finished: Current overflow time " << (time - m_overflowTime)
                              << "\toverflow frequency: " << m_overflowCnt
                              << "\tsum of overflow time: " << m_overflowDuration << std::endl);
                 m_overflowFlag = 0;
-              }
+              }*/
               if(m_time < 0) {
                   m_time = time;
                   m_lastTime = time;
@@ -259,7 +259,10 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 {
                 }
                 if(m_bitrate != bitrate) {
-                                   
+                        /* bitrate changed */
+                        b = m_bitrate * 0.1 * 1024/8;
+                        NS_LOG_DEBUG(">> The threshold of playback b is: " << b 
+                                        << "\tbitrate: " << bitrate << std::endl);            
                 }
                 if (currentFrame != m_lastFrame) {
                         N = currentFrame - m_lastFrame; // N frame in a chunk
@@ -272,7 +275,6 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                         NS_LOG_DEBUG(">> Current time is " << time
                              << "\tLast time " << m_time << std::endl);
                         m_thoughout = 8*m_data/(1024*(time - m_time));
-                        m_time = time;
                         NS_LOG_DEBUG(">> Thoughput in this tao is " << m_thoughout
                              << "\tData in this tao: " << m_data << std::endl);
                         m_data = 0;
@@ -306,6 +308,7 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                              << "\t2nd feedback is received at frame k: " << k
                              << "\tm_encoderSize: " << m_encoderSize << std::endl);
                         }
+                        m_time = time;
               }
                 /* Decision of bitrate shift */
                 if (m_flag == 2 && m_oldFrameNo != m_frameNo) {
@@ -323,7 +326,8 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                      m_videoRateFile  << m_thoughout * 1 << std::endl; 
                      m_flag = 4; // break for-loop
                 }
-              if (time - m_lastTime >= 1){
+              /* playback interruption or overflow happens, time is 0.1s */
+              if (time - m_lastTime >= 0.1){
                 m_thoughoutFile << std::fixed << std::setprecision(4) << time
                                 << std::setfill(' ') << std::setw(16) << 8*m_oneSdata/(1024*(time - m_lastTime))
                                 << std::setfill(' ') << std::setw(16) << m_bitrate
@@ -331,26 +335,36 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 /* m_oneSdata is used for calculate thoughput in 1s */
                 NS_LOG_DEBUG(">> One second data: " << 8*m_oneSdata/1024
                              << "\ttime interval: " << (time - m_lastTime) << std::endl);
-                
+
                 /* playback interruption happens, calculate the playback interruption */
-                if (m_bitrate * (time - m_lastTime) > 8*m_oneSdata/1024 && 0 == m_interruptFlag) {
+                if ( m_pBuf < b && 0 == m_interruptFlag) {
                     m_interrupTime = time;
                     NS_LOG_DEBUG(">> Interruption happens, bitrate: " << m_bitrate
                              << "\ttime: " << m_interrupTime << std::endl);
-                    m_interrupData = 1024 * m_bitrate * (time - m_lastTime)/8 - m_oneSdata;
                     m_interruptCnt ++;
                     m_interruptFlag = 1;
                 }
+                /* no interruption, playback */
+                if (0 == m_interruptFlag) {
+                     m_pBuf -= m_bitrate * (time - m_lastTime) * 1024/8;
+                }
+                NS_LOG_DEBUG(">> After playback, current buffer is: " << m_pBuf
+                                     << "\tMax buffer size: " << m_maxPBuf << std::endl);  
 
                 /* overflow happens, calculate the overflow */
                 NS_LOG_DEBUG(">> Current buffer is: " << m_pBuf
-                             << "\tMax buffer size: " << m_maxPBuf << std::endl);
-                if (m_pBuf > m_maxPBuf && 0 == m_overflowFlag) {
-                   m_overflowTime = time;
-                   m_overflowCnt ++;
-                   m_overflowFlag = 1;
-                }
-                m_pBuf -= m_bitrate * (time - m_lastTime) * 1024/8;
+                            << "\tMax buffer size: " << m_maxPBuf << std::endl);
+                    if (m_pBuf > m_maxPBuf /*&& 0 == m_overflowFlag*/) {
+                        NS_LOG_DEBUG(">> Overflow happens,"
+                           << "\ttime: " << time << std::endl);
+                        m_overflowTime = time;
+                        m_overflowCnt ++;
+                        m_overflowFlag = 1;
+                        NS_LOG_DEBUG(">> Packets are discarded: " << (m_pBuf - m_maxPBuf) 
+                           << "\toverflow frequency: " << m_overflowCnt << std::endl);
+                        m_pBuf = m_maxPBuf; /*discard the packets */
+                    } 
+      
                 m_lastTime = time;
                 m_oneSdata = 0;
                 // double mos = calO_41 (m_bitrate, m_interrupDuration/m_interruptCnt, m_interruptCnt);
