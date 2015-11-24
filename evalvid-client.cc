@@ -81,6 +81,9 @@ EvalvidClient::EvalvidClient ()
   m_videoRateFileName = "videoRate";
   m_maxPBuf = 10 * 1024 * 1024; // 200
   m_pBuf = 0.0;
+  m_iter = 0; // iteration flag, 1 : stop
+  m_objf = 1e10;
+  m_c = 0;
   m_videoRateFile.open(m_videoRateFileName.c_str(), ios::out);
   if (m_videoRateFile.fail())
    {
@@ -379,6 +382,15 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 NS_LOG_DEBUG("MOS2 = " << calO_41 (1397, 0.1, 1, 0, 0));
                 NS_LOG_DEBUG("MOS3 = " << calO_41 (1397, 0, 0, 0.1, 1));
                 NS_LOG_DEBUG("MOS4 = " << calO_41 (1397, 0.1, 1, 0.1, 1));
+                uint32_t i;
+                for (i = 10; i <= 1000; i++) {
+                  if (1 == m_iter)
+                    break;
+                  constraint (i);
+                }
+                if (1 == m_iter) {
+                    NS_LOG_DEBUG("threshold b = " << m_b - 1);
+                }
               }
               m_oldFrameNo = m_frameNo;
               NS_LOG_DEBUG(">> Average thoughout = " << m_sumThoughout/m_count
@@ -452,6 +464,78 @@ EvalvidClient::calO_41 (double v_br, double L, uint32_t N, double T, uint32_t M)
   double tmp = (o32 - 5 + o24) < 5 ? (o32 - 5 + o24) : 5;
   double Qms = tmp > 1 ? tmp : 1;
   return Qms;
+}
+
+/**/
+double
+EvalvidClient::expf(double y)
+{
+  return exp(-y*y/2);
+}
+double
+EvalvidClient::phi(double x)
+{
+  double y;
+  double s = 0.0;
+  double delta = 1;
+  double inf = -1e6;
+  for(y = inf; y <= x; y += delta) {
+    s += expf(y)*delta;
+  }
+  return s;
+}
+double 
+EvalvidClient::constraint (double b) {
+  double t = 15.0;
+  double lamda = 50;
+  double va = 0.05;
+  double beta;
+  double alpha;
+  double f;
+  beta = lamda;
+  alpha = lamda*lamda*lamda*va;
+  double c = phi((b-beta*t)/sqrt(alpha*t)) + exp(2*beta*b/alpha)*phi(-(b+beta*t)/sqrt(alpha*t)) - 0.05;
+  if (c <= 0) {
+    f = objfunc(b);
+    NS_LOG_DEBUG("Charging probability = " << c
+        << "\tb = " << b
+        << "\tmin object: " << f << std::endl);
+    if (m_objf <= f) {
+      m_iter = 1;
+      m_b = b;  // stop
+    }
+    m_objf = f;
+  } else {
+    if (m_c < 0) {
+      m_iter = 1;
+      m_b = b;  // stop
+    }
+  }
+  m_c = c;
+  return c;
+}
+double
+EvalvidClient::objfunc (double b) {
+  double lamda = 50;
+  double u = 60;
+  double va = 0.05;
+  double vs = 0.05;
+  uint32_t N = 5000; // 5000
+  uint32_t S = 100;
+
+  double p1 = 50;
+  double p2 = 0.05;
+  double w1 = 0.1;
+  double vd = 1;
+  double beta = lamda - u;
+  double alpha = lamda*lamda*lamda*va + u*u*u*vs;
+  double r = 2*beta/alpha;
+  double E_D = b/lamda;
+  double V_D = b*va;
+  double L = 1/((-(1-exp(-r)*u*u*b/(lamda*beta*(1-exp(-r*b)*exp(r*(N-1)))))) + lamda/beta);
+  double C = 1/(-u/beta + lamda*lamda*exp(r*(N-1))*(1-exp(-r*b))/(beta*b*u*(1-exp(-r))));
+  double f = p1*L + (p2*C*S)/E_D + w1*(E_D + vd*V_D);
+  return f;
 }
 
 } // Namespace ns3

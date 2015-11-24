@@ -90,11 +90,17 @@ private:
 
   void Send (void);
   void HandleRead (Ptr<Socket> socket);
+  /* ITU-T P.1201 */
   double calO_23 (double v_br);
   double calO_32 (double o23);
   double calO_24 (double L, uint32_t N);
   double calO_25 (double T, uint32_t M);
   double calO_41 (double v_br, double L, uint32_t N, double T, uint32_t M);
+  /* buffer management */
+  double constraint (double b);
+  double expf (double x);
+  double phi (double a);
+  double objfunc (double b);
 
   ofstream    receiverDumpFile;
   string      receiverDumpFileName;
@@ -140,6 +146,10 @@ private:
   uint16_t    m_overflowCnt;
   uint16_t    m_overflowFlag;
   double      m_overflowDuration;
+  double      m_b;
+  double      m_iter;
+  double      m_objf;
+  double      m_c;
 };
 
 } // namespace ns3
