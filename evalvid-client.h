@@ -97,10 +97,10 @@ private:
   double calO_25 (double T, uint32_t M);
   double calO_41 (double v_br, double L, uint32_t N, double T, uint32_t M);
   /* buffer management */
-  double constraint (double b);
+  double constraint (double b, double lamda, double va);
   double expf (double x);
   double phi (double a);
-  double objfunc (double b);
+  double objfunc (double b, double lamda, double va);
 
   ofstream    receiverDumpFile;
   string      receiverDumpFileName;
@@ -150,6 +150,13 @@ private:
   double      m_iter;
   double      m_objf;
   double      m_c;
+  double      m_staTime;
+  uint32_t    m_staPkt;
+  uint32_t    m_staFlag;
+  std::vector < uint32_t > m_pktNum; 
+  uint32_t    m_intervalNum;
+  double      m_lamda;
+  double      m_va;
 };
 
 } // namespace ns3

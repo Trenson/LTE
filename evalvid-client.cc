@@ -84,6 +84,7 @@ EvalvidClient::EvalvidClient ()
   m_iter = 0; // iteration flag, 1 : stop
   m_objf = 1e10;
   m_c = 0;
+  m_intervalNum = 0;
   m_videoRateFile.open(m_videoRateFileName.c_str(), ios::out);
   if (m_videoRateFile.fail())
    {
@@ -220,6 +221,7 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
               if(m_time < 0) {
                   m_time = time;
                   m_lastTime = time;
+                  m_staTime = time;
               }
                   uint32_t frameId;
                   uint32_t Uid;
@@ -248,6 +250,8 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                   m_encoderSize = 0;
                 }
                 m_encoderSize += packet->GetSize();
+                m_staPkt ++; // stat packet number in a bitrate
+                m_intervalNum ++; //stat packet number in a interval
                 double bitrate = 0.0;
                 uint32_t currentFrame;
                 string fileName;
@@ -265,8 +269,10 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                         /* bitrate changed */
                         b = m_bitrate * 0.1 * 1024/8;
                         NS_LOG_DEBUG(">> The threshold of playback b is: " << b 
-                                        << "\tbitrate: " << bitrate << std::endl);            
+                                        << "\tbitrate: " << bitrate << std::endl);    
+                        m_staFlag = 0;        
                 }
+
                 if (currentFrame != m_lastFrame) {
                         N = currentFrame - m_lastFrame; // N frame in a chunk
                         m_lastFrame = currentFrame;
@@ -283,6 +289,11 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                         m_data = 0;
                         m_sumThoughout += m_thoughout;
                         m_count++;
+                        if (0 == m_staFlag) {
+                          m_pktNum.push_back(m_intervalNum);
+                          NS_LOG_DEBUG(">> size: " << m_pktNum.size () << "\t" << m_intervalNum);
+                          m_intervalNum = 0;
+                        }
                         /* Decision algorithm of thoughput degradation */
                         if (m_thoughout < m_bitrate && m_flag == 0) {
                           NS_LOG_DEBUG(">> 1st feedback, frameNo: " << m_frameNo
@@ -313,6 +324,39 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                         }
                         m_time = time;
               }
+                /* calculate the threshold b */
+                if (m_count > 0 && m_count%25 == 0 && 0 == m_staFlag){
+                        double lamda;
+                        NS_LOG_DEBUG(">> m_staPkt/(time - m_staTime): " << m_staPkt
+                             << "\ttime - m_staTime " << (time - m_staTime) << std::endl);
+                        uint32_t n = m_pktNum.size ();
+                        double v = 0;
+                        uint32_t a;
+                        lamda =  m_staPkt/n;
+                        while (0 < m_pktNum.size ())
+                        {
+                           a = *(m_pktNum.begin ());
+                           NS_LOG_DEBUG(">> m_pktNum =  " << a);
+                           v += (a*a - lamda*lamda);
+                           m_pktNum.erase(m_pktNum.begin ());
+                           // NS_LOG_DEBUG(">> after erase size: " << m_pktNum.size ());
+                        }
+                        v/=n;
+                        NS_LOG_DEBUG(">> mean : " << lamda
+                             << "\tvariance " << v << std::endl);
+                        uint32_t i;
+                        for (i = 10; i <= 1000; i++) {
+                          if (1 == m_iter)
+                                break;
+                          constraint (i, lamda, v);
+                        }
+                        if (1 == m_iter) {
+                          NS_LOG_DEBUG("threshold b = " << m_b - 1);
+                        }
+                        m_staPkt = 0;
+                        m_staTime = time;
+                        m_staFlag = 1;
+                }
                 /* Decision of bitrate shift */
                 if (m_flag == 2 && m_oldFrameNo != m_frameNo) {
                   if(m_encoderSize > X){
@@ -382,15 +426,6 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 NS_LOG_DEBUG("MOS2 = " << calO_41 (1397, 0.1, 1, 0, 0));
                 NS_LOG_DEBUG("MOS3 = " << calO_41 (1397, 0, 0, 0.1, 1));
                 NS_LOG_DEBUG("MOS4 = " << calO_41 (1397, 0.1, 1, 0.1, 1));
-                uint32_t i;
-                for (i = 10; i <= 1000; i++) {
-                  if (1 == m_iter)
-                    break;
-                  constraint (i);
-                }
-                if (1 == m_iter) {
-                    NS_LOG_DEBUG("threshold b = " << m_b - 1);
-                }
               }
               m_oldFrameNo = m_frameNo;
               NS_LOG_DEBUG(">> Average thoughout = " << m_sumThoughout/m_count
@@ -485,10 +520,10 @@ EvalvidClient::phi(double x)
   return s;
 }
 double 
-EvalvidClient::constraint (double b) {
-  double t = 15.0;
-  double lamda = 50;
-  double va = 0.05;
+EvalvidClient::constraint (double b, double lamda, double va) {
+  double t = 5.0; //15
+  //double lamda = 50;
+  //double va = 0.05;
   double beta;
   double alpha;
   double f;
@@ -496,7 +531,7 @@ EvalvidClient::constraint (double b) {
   alpha = lamda*lamda*lamda*va;
   double c = phi((b-beta*t)/sqrt(alpha*t)) + exp(2*beta*b/alpha)*phi(-(b+beta*t)/sqrt(alpha*t)) - 0.05;
   if (c <= 0) {
-    f = objfunc(b);
+    f = objfunc(b, lamda, va);
     NS_LOG_DEBUG("Charging probability = " << c
         << "\tb = " << b
         << "\tmin object: " << f << std::endl);
@@ -509,18 +544,19 @@ EvalvidClient::constraint (double b) {
     if (m_c < 0) {
       m_iter = 1;
       m_b = b;  // stop
+    } else if (m_c > 0) {
+      m_iter = 1;
+      m_b = b;  // stop
     }
   }
   m_c = c;
   return c;
 }
 double
-EvalvidClient::objfunc (double b) {
-  double lamda = 50;
+EvalvidClient::objfunc (double b, double lamda, double va) {
   double u = 60;
-  double va = 0.05;
   double vs = 0.05;
-  uint32_t N = 5000; // 5000
+  uint32_t N = 10000; // 5000
   uint32_t S = 100;
 
   double p1 = 50;
