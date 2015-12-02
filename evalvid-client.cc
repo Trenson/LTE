@@ -79,12 +79,14 @@ EvalvidClient::EvalvidClient ()
   X = 0.0;
   m_interrupDuration = 0.0;
   m_videoRateFileName = "videoRate";
-  m_maxPBuf = 10 * 1024 * 1024; // 200
+  m_maxPBuf = 5.6 * 1024 * 1024; // 10M Bytes, 5.56
   m_pBuf = 0.0;
   m_iter = 0; // iteration flag, 1 : stop
   m_objf = 1e10;
   m_c = 0;
   m_intervalNum = 0;
+  m_avgPktSize = 1362;
+  m_b = 15; // initial value, packets number,200 overflow
   m_videoRateFile.open(m_videoRateFileName.c_str(), ios::out);
   if (m_videoRateFile.fail())
    {
@@ -188,7 +190,6 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
               SeqTsHeader seqTs;
               packet->RemoveHeader (seqTs);
               uint32_t packetId = seqTs.GetSeq ();
-              double b; // threshold
 
               NS_LOG_DEBUG(">> EvalvidClient: Received packet at " << Simulator::Now().GetSeconds()
                            << "s\tid: " << packetId
@@ -203,21 +204,13 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
               m_data += packet->GetSize();
               m_oneSdata += packet->GetSize();
               /* interruption finish */
-              if (m_pBuf == b && 1 == m_interruptFlag) {
+              if (m_pBuf >= m_b*m_avgPktSize && 1 == m_interruptFlag) {
                 m_interrupDuration += (time - m_interrupTime);
                 NS_LOG_DEBUG(">> Interruption finished: Current interruption time " << (time - m_interrupTime)
                              << "\tInterruption frequency: " << m_interruptCnt
                              << "\tsum of interruption time: " << m_interrupDuration << std::endl);
                 m_interruptFlag = 0;
               }
-              /* overflow finish */
-              /*if (m_pBuf < m_maxPBuf && 1 == m_overflowFlag) {
-                m_overflowDuration += (time - m_overflowTime);
-                NS_LOG_DEBUG(">> Overflow finished: Current overflow time " << (time - m_overflowTime)
-                             << "\toverflow frequency: " << m_overflowCnt
-                             << "\tsum of overflow time: " << m_overflowDuration << std::endl);
-                m_overflowFlag = 0;
-              }*/
               if(m_time < 0) {
                   m_time = time;
                   m_lastTime = time;
@@ -267,10 +260,12 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 }
                 if(m_bitrate != bitrate) {
                         /* bitrate changed */
-                        b = m_bitrate * 0.1 * 1024/8;
-                        NS_LOG_DEBUG(">> The threshold of playback b is: " << b 
+                        //m_b = m_bitrate * 0.1 * 1024/8/m_avgPktSize; // cal b, original method
+                        NS_LOG_DEBUG(">> The threshold of playback b is: " << m_b
                                         << "\tbitrate: " << bitrate << std::endl);    
-                        m_staFlag = 0;        
+                        m_staFlag = 0;    
+                        m_iter = 0;    
+                        m_objf = 1e10;
                 }
 
                 if (currentFrame != m_lastFrame) {
@@ -325,33 +320,32 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                         m_time = time;
               }
                 /* calculate the threshold b */
-                if (m_count > 0 && m_count%25 == 0 && 0 == m_staFlag){
+                if (m_count > 0 && m_count%25 == 0 && 0 == m_staFlag && (time - m_staTime) > 1){
                         double lamda;
                         NS_LOG_DEBUG(">> m_staPkt/(time - m_staTime): " << m_staPkt
                              << "\ttime - m_staTime " << (time - m_staTime) << std::endl);
                         uint32_t n = m_pktNum.size ();
                         double v = 0;
-                        uint32_t a;
                         lamda =  m_staPkt/n;
+                        /*uint32_t a;
                         while (0 < m_pktNum.size ())
                         {
                            a = *(m_pktNum.begin ());
                            NS_LOG_DEBUG(">> m_pktNum =  " << a);
                            v += (a*a - lamda*lamda);
                            m_pktNum.erase(m_pktNum.begin ());
-                           // NS_LOG_DEBUG(">> after erase size: " << m_pktNum.size ());
                         }
-                        v/=n;
+                        v/=n;*/
                         NS_LOG_DEBUG(">> mean : " << lamda
                              << "\tvariance " << v << std::endl);
                         uint32_t i;
-                        for (i = 10; i <= 1000; i++) {
+                        for (i = 5; i <= 100; i++) {
                           if (1 == m_iter)
                                 break;
-                          constraint (i, lamda, v);
+                          constraint (i, lamda, 0.05);
                         }
                         if (1 == m_iter) {
-                          NS_LOG_DEBUG("threshold b = " << m_b - 1);
+                          NS_LOG_DEBUG("calculate threshold b = " << m_b);
                         }
                         m_staPkt = 0;
                         m_staTime = time;
@@ -384,17 +378,18 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                              << "\ttime interval: " << (time - m_lastTime) << std::endl);
 
                 /* playback interruption happens, calculate the playback interruption */
-                if ( m_pBuf < b && 0 == m_interruptFlag) {
+                if ( m_pBuf < m_b*m_avgPktSize && 0 == m_interruptFlag) {
                     m_interrupTime = time;
                     NS_LOG_DEBUG(">> Interruption happens, bitrate: " << m_bitrate
                              << "\ttime: " << m_interrupTime << std::endl);
                     m_interruptCnt ++;
                     m_interruptFlag = 1;
-                }
-                /* no interruption, playback */
-                if (0 == m_interruptFlag) {
+                } else if (m_pBuf >= m_b*m_avgPktSize && 0 == m_interruptFlag) { /* no interruption, playback */
                      m_pBuf -= m_bitrate * (time - m_lastTime) * 1024/8;
+                     NS_LOG_DEBUG(">> Packets being served at mean rate is: " << m_bitrate * (time - m_lastTime) * 1024/8/1362 
+                                        << "\tbitrate: " << bitrate << std::endl); 
                 }
+                
                 NS_LOG_DEBUG(">> After playback, current buffer is: " << m_pBuf
                                      << "\tMax buffer size: " << m_maxPBuf << std::endl);  
 
@@ -415,17 +410,11 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 m_lastTime = time;
                 m_oneSdata = 0;
                 // double mos = calO_41 (m_bitrate, m_interrupDuration/m_interruptCnt, m_interruptCnt);
-                /*NS_LOG_DEBUG("MOS = " << calO_41 (m_bitrate, m_interrupDuration/m_interruptCnt, m_interruptCnt));
-                NS_LOG_DEBUG("MOS1 = " << calO_41 (1397, 0, 0));
-                NS_LOG_DEBUG("MOS2 = " << calO_41 (1079, 0.6, 3));
-                NS_LOG_DEBUG("MOS3 = " << calO_41 (949, 0, 0));
-                NS_LOG_DEBUG("MOS4 = " << calO_41 (1397, 0.1, 1));
-                NS_LOG_DEBUG("MOS5 = " << calO_41 (600, 0.1, 1));
-                NS_LOG_DEBUG("MOS6 = " << calO_41 (600, 0.2, 1));*/
-                NS_LOG_DEBUG("MOS1 = " << calO_41 (1397, 0, 0, 0, 0));
+                // NS_LOG_DEBUG("MOS = " << calO_41 (m_bitrate, m_interrupDuration/m_interruptCnt, m_interruptCnt));
+                /*NS_LOG_DEBUG("MOS1 = " << calO_41 (1397, 0, 0, 0, 0));
                 NS_LOG_DEBUG("MOS2 = " << calO_41 (1397, 0.1, 1, 0, 0));
                 NS_LOG_DEBUG("MOS3 = " << calO_41 (1397, 0, 0, 0.1, 1));
-                NS_LOG_DEBUG("MOS4 = " << calO_41 (1397, 0.1, 1, 0.1, 1));
+                NS_LOG_DEBUG("MOS4 = " << calO_41 (1397, 0.1, 1, 0.1, 1));*/
               }
               m_oldFrameNo = m_frameNo;
               NS_LOG_DEBUG(">> Average thoughout = " << m_sumThoughout/m_count
@@ -512,7 +501,7 @@ EvalvidClient::phi(double x)
 {
   double y;
   double s = 0.0;
-  double delta = 1;
+  double delta = 0.5;
   double inf = -1e6;
   for(y = inf; y <= x; y += delta) {
     s += expf(y)*delta;
@@ -521,7 +510,7 @@ EvalvidClient::phi(double x)
 }
 double 
 EvalvidClient::constraint (double b, double lamda, double va) {
-  double t = 5.0; //15
+  double t = 10.0; //15
   //double lamda = 50;
   //double va = 0.05;
   double beta;
@@ -529,24 +518,24 @@ EvalvidClient::constraint (double b, double lamda, double va) {
   double f;
   beta = lamda;
   alpha = lamda*lamda*lamda*va;
-  double c = phi((b-beta*t)/sqrt(alpha*t)) + exp(2*beta*b/alpha)*phi(-(b+beta*t)/sqrt(alpha*t)) - 0.05;
+  double c = phi((b-beta*t)/sqrt(alpha*t)) + exp(2*beta*b/alpha)*phi(-(b+beta*t)/sqrt(alpha*t)) - 0.09;
+  NS_LOG_DEBUG("Charging probability before = " << c);
   if (c <= 0) {
     f = objfunc(b, lamda, va);
     NS_LOG_DEBUG("Charging probability = " << c
         << "\tb = " << b
         << "\tmin object: " << f << std::endl);
     if (m_objf <= f) {
-      m_iter = 1;
-      m_b = b;  // stop
+      m_iter = 1; // last object function value is smaller, stop
+      m_b = b; // threshold b changed
     }
     m_objf = f;
-  } else {
+  } else { // current object function value is > 0
     if (m_c < 0) {
-      m_iter = 1;
-      m_b = b;  // stop
+      m_iter = 1; // stop
+      m_b = b; // threshold b changed
     } else if (m_c > 0) {
-      m_iter = 1;
-      m_b = b;  // stop
+      m_iter = 1; // stop
     }
   }
   m_c = c;
@@ -556,7 +545,7 @@ double
 EvalvidClient::objfunc (double b, double lamda, double va) {
   double u = 60;
   double vs = 0.05;
-  uint32_t N = 10000; // 5000
+  uint32_t N = m_maxPBuf/m_avgPktSize; // 5000, 10000
   uint32_t S = 100;
 
   double p1 = 50;

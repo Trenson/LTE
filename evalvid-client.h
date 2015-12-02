@@ -146,7 +146,7 @@ private:
   uint16_t    m_overflowCnt;
   uint16_t    m_overflowFlag;
   double      m_overflowDuration;
-  double      m_b;
+  double      m_b; // threshold
   double      m_iter;
   double      m_objf;
   double      m_c;
@@ -157,6 +157,7 @@ private:
   uint32_t    m_intervalNum;
   double      m_lamda;
   double      m_va;
+  uint32_t    m_avgPktSize;
 };
 
 } // namespace ns3
