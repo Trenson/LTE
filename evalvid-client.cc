@@ -86,7 +86,8 @@ EvalvidClient::EvalvidClient ()
   m_c = 0;
   m_intervalNum = 0;
   m_avgPktSize = 1362;
-  m_b = 15; // initial value, packets number,200 overflow
+  m_b = 200; // initial value 15, packets number,200 overflow
+  m_detechCnt = 0;
   m_videoRateFile.open(m_videoRateFileName.c_str(), ios::out);
   if (m_videoRateFile.fail())
    {
@@ -215,6 +216,7 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                   m_time = time;
                   m_lastTime = time;
                   m_staTime = time;
+                  m_detechTime = time;
               }
                   uint32_t frameId;
                   uint32_t Uid;
@@ -338,7 +340,7 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                         v/=n;*/
                         NS_LOG_DEBUG(">> mean : " << lamda
                              << "\tvariance " << v << std::endl);
-                        uint32_t i;
+                        /*uint32_t i;
                         for (i = 5; i <= 100; i++) {
                           if (1 == m_iter)
                                 break;
@@ -346,7 +348,7 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                         }
                         if (1 == m_iter) {
                           NS_LOG_DEBUG("calculate threshold b = " << m_b);
-                        }
+                        }*/
                         m_staPkt = 0;
                         m_staTime = time;
                         m_staFlag = 1;
@@ -369,13 +371,18 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                 }
               /* playback interruption or overflow happens, time is 0.1s */
               if (time - m_lastTime >= 0.1){
+                m_detechCnt++;
+                if(0 == m_detechCnt % 10) {
                 m_thoughoutFile << std::fixed << std::setprecision(4) << time
-                                << std::setfill(' ') << std::setw(16) << 8*m_oneSdata/(1024*(time - m_lastTime))
+                                << std::setfill(' ') << std::setw(16) << 8*m_oneSdata/(1024*(time - m_detechTime))
                                 << std::setfill(' ') << std::setw(16) << m_bitrate
                                 << std::endl; 
                 /* m_oneSdata is used for calculate thoughput in 1s */
                 NS_LOG_DEBUG(">> One second data: " << 8*m_oneSdata/1024
-                             << "\ttime interval: " << (time - m_lastTime) << std::endl);
+                             << "\ttime interval: " << (time - m_detechTime) << std::endl);
+                m_oneSdata = 0;
+                m_detechTime = time;
+                }
 
                 /* playback interruption happens, calculate the playback interruption */
                 if ( m_pBuf < m_b*m_avgPktSize && 0 == m_interruptFlag) {
@@ -408,13 +415,11 @@ EvalvidClient::HandleRead (Ptr<Socket> socket)
                     } 
       
                 m_lastTime = time;
-                m_oneSdata = 0;
                 // double mos = calO_41 (m_bitrate, m_interrupDuration/m_interruptCnt, m_interruptCnt);
                 // NS_LOG_DEBUG("MOS = " << calO_41 (m_bitrate, m_interrupDuration/m_interruptCnt, m_interruptCnt));
-                /*NS_LOG_DEBUG("MOS1 = " << calO_41 (1397, 0, 0, 0, 0));
-                NS_LOG_DEBUG("MOS2 = " << calO_41 (1397, 0.1, 1, 0, 0));
-                NS_LOG_DEBUG("MOS3 = " << calO_41 (1397, 0, 0, 0.1, 1));
-                NS_LOG_DEBUG("MOS4 = " << calO_41 (1397, 0.1, 1, 0.1, 1));*/
+                NS_LOG_DEBUG("MOS1 = " << calO_41 (1397, 0, 0, 0, 0));
+                NS_LOG_DEBUG("MOS2 = " << calO_41 (1397, 0.707, 1, 0.052, 2));
+                NS_LOG_DEBUG("MOS3 = " << calO_41 (1287, 0, 0, 0, 0));
               }
               m_oldFrameNo = m_frameNo;
               NS_LOG_DEBUG(">> Average thoughout = " << m_sumThoughout/m_count
@@ -431,7 +436,7 @@ EvalvidClient::calO_23 (double v_br)
 {
   double v_mosc;
   double v_dc;
-  double v_abif = 31000; // average number of bytes per I-frame
+  double v_abif = 46000; // average number of bytes per I-frame
   double v_nbr = (v_br * 8 * 30)/(1000 * 30); // Eq. 6-31
   double v_ccf = sqrt(v_br/(v_abif * 15.0)) > 1.10 ? 1.10 : sqrt(v_br/(v_abif * 15.0)); // Eq. 6-32
   v_dc = 4/(1 + pow(v_nbr/(104.0*v_ccf + 1.0),(0.01*v_ccf + 1.1))); // Eq. 6-40
@@ -527,13 +532,13 @@ EvalvidClient::constraint (double b, double lamda, double va) {
         << "\tmin object: " << f << std::endl);
     if (m_objf <= f) {
       m_iter = 1; // last object function value is smaller, stop
-      m_b = b; // threshold b changed
+      m_b = b - 1; // threshold b changed
     }
     m_objf = f;
   } else { // current object function value is > 0
     if (m_c < 0) {
       m_iter = 1; // stop
-      m_b = b; // threshold b changed
+      m_b = b - 1; // threshold b changed
     } else if (m_c > 0) {
       m_iter = 1; // stop
     }

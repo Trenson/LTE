@@ -158,6 +158,8 @@ private:
   double      m_lamda;
   double      m_va;
   uint32_t    m_avgPktSize;
+  uint32_t    m_detechCnt;
+  double      m_detechTime;
 };
 
 } // namespace ns3
